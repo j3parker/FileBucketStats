@@ -7,6 +7,7 @@ Creates a tree-view representation of the filebuckets modulo org
 Install .NET core (Windows or Linux) and run
 
 ```cs
+dotnet restore
 dotnet run -c Release --project src/FileBucketStats/FileBucketStats.csproj > buckets.json
 ```
 
