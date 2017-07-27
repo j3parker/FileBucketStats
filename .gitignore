@@ -1,0 +1,7 @@
+bin/
+obj/
+.vs/
+buckets.json
+*~
+*.swp
+*.swo

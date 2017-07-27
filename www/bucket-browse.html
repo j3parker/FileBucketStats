@@ -1,0 +1,209 @@
+<!doctype html>
+
+<style>
+    body {
+        font-family: sans-serif;
+    }
+
+    h1 {
+       margin-top: 0;
+    }
+
+    svg {
+        font: 10px monospace;
+    }
+</style>
+
+<h1>Filebucket path count browser</h1>
+<h2></h2>
+
+<svg></svg>
+<ul></ul>
+
+<script src="https://d3js.org/d3.v4.min.js"></script>
+<script>
+    'use strict';
+
+    function render(path, data, svg, setHeading, navigate) {
+        const cwd = cd(data, path);
+        if(cwd===null) {
+            alert(`couldnt navigate to ${path}`);
+            return;
+        }
+
+        let pct = ((cwd['/']/data['/']*1000)|0)/10;
+        setHeading(`${path} (${cwd['/']} files, ${pct}% of total)`);
+
+        const dataForChart = sliceDataForChart(cwd, path, 1);
+
+        const color = d3.scaleOrdinal(d3.schemeCategory20)
+        const format = d3.format(',d');
+
+        const treemap = d3.treemap()
+            .tile(d3.treemapSquarify)
+            .size([svg.attr('width'), svg.attr('height')])
+            .round(true)
+            .paddingInner(1);
+
+        let i = 0; // hack
+        const root = d3.hierarchy(dataForChart)
+            .each(d => {
+                if (d.parent && d.parent.parent) {
+                    d.data.color = d.parent.data.color;
+                } else {
+                    d.data.color = color(i++);
+                }
+                d.data.id = d.data.name.replace('/', '.');
+            })
+            .sort((a, b) => b.height - a.height || b.value - b.value);
+
+        treemap(root);
+
+        var cell = svg.selectAll("g")
+            .data(root.leaves())
+            .enter().append("g")
+            .attr("transform", d => `translate(${d.x0},${d.y0})`);
+
+        cell.append("rect")
+            .attr("id", d => d.data.id)
+            .attr("width", d => d.x1 - d.x0)
+            .attr("height", d => d.y1 - d.y0)
+            .attr("fill", d => d.data.color);
+
+        cell.append('clipPath')
+            .attr('id', d => `clip-${d.data.id}`)
+            .append('use')
+            .attr('xlink:href', d => `#${d.data.id}`);
+
+        cell.append('text')
+            .attr('clip-path', d => `url(#clip-${d.data.id})`)
+            .selectAll('tspan')
+            .data(d => d.data.name.substr(path.length + !(path==='/')).split(/(?=[A-Z][^A-Z])/g))
+            .enter().append('tspan')
+                .attr('x', 4)
+                .attr('y', (d, i) => 13 + i * 10)
+                .text(d => d);
+
+        // hovertext
+        cell.append('title')
+            .text(d => `${d.data.name} (${d.value} files, ${((1000*d.value/cwd['/'])|0)/10}% of this directory`);
+
+        cell.on('click', d => navigate(d.data.name));
+
+        const lis = d3.select('ul').selectAll('li')
+            .data(root.children.sort((a,b) => b.value - a.value))
+            .enter().append('li');
+
+        // add the links
+        lis.append('a')
+            .attr('href', d => `#${cd(data, d.data.name) ? d.data.name : path}`)
+            .text(d => d.data.name);
+
+        // add %s and stuff beside the links
+        lis.append('span').text(d => ` (${d.value} files, ${((1000*d.value/cwd['/'])|0)/10}% of this directory)`);
+
+        // add ".." link"
+        if(path != '/') {
+            d3.select('ul').insert('li', ':first-child').append('a').text('..').attr('href', `#${ path.substr(0, path.lastIndexOf('/'))}`);
+        }
+    }
+
+    function getPath() {
+        let path = window.location.hash;
+
+        if(path.length > 0) {
+            path = path.substr(1);
+        } else {
+            path = '/';
+        }
+
+        return path;
+    }
+
+    function cd(data, path) {
+        const dirs = path.split('/');
+        let res = data;
+        for(let dir of dirs) {
+            if(dir == '') continue;
+            if(!res.hasOwnProperty(dir)) {
+                return null;
+            }
+            res = res[dir];
+        }
+        if(!res.hasOwnProperty('/')) {
+            return null;
+        }
+        return res;
+    }
+
+    function sliceDataForChart(cwd, path, depth) {
+        let children = null;
+
+        if(depth != 0 && cwd.hasOwnProperty('/')) {
+            children = Object.keys(cwd).map(cname => {
+                if(cname == '/') {
+                    return null;
+                }
+
+                let next = '';
+                if(path === '/') {
+                    next = '/' + cname;
+                } else {
+                    next = path + '/' + cname;
+                }
+                return sliceDataForChart(cwd[cname], next, depth - 1);
+            }).filter(x => x); // remove nulls
+
+        }
+
+        return {
+            name: path,
+            value: cwd['/'] || cwd, // may be a file or directory
+            children: children
+        };
+    }
+
+    function resizeToViewport(svg) {
+        svg.attr('width', document.body.offsetWidth)
+            .attr('height', 600);
+    }
+
+    function navigate(to) {
+        const next = cd(__data, to); // hack: using __data
+        if(next === null || !next['/']) return; // don't try to navigate into files
+        window.location.hash = to;
+    }
+
+    let __data = null;
+
+    document.addEventListener('DOMContentLoaded', () => d3.json('buckets.json', (e, data) => {
+        __data = data; // for debugging
+
+        if (e) {
+            alert('couldnt load data');
+            throw e;
+        }
+
+        const svg = d3.selectAll('svg');
+
+        resizeToViewport(svg);
+
+        const setHeading = val => document.getElementsByTagName('h2')[0].textContent = val;
+
+        const rendercb = () => {
+            const path = getPath();
+
+            console.info(`Rendering ${path}`);
+
+            render(path, data, svg, setHeading, navigate);
+        };
+
+        window.addEventListener('hashchange', () => {
+            document.getElementsByTagName('svg')[0].innerHTML = ''; // hack to force redraw. why does redraw sometimes silently "fail"?
+            document.getElementsByTagName('ul')[0].innerHTML = '';
+            rendercb();
+        });
+
+        rendercb();
+    }));
+</script>
