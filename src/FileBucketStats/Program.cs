@@ -198,8 +198,7 @@ namespace FileBuckets {
 		static void Main( string[] args ) {
 			switch( args.Length ) {
 				case 0:
-					Run(
-						 "//pdfs01/ea/devops/filebucket" );
+					Run( "//pdfs01/ea/devops/filebucket" );
 					break;
 				case 1:
 					Run( args[0] );
