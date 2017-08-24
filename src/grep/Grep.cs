@@ -30,8 +30,8 @@ namespace fb.grep {
 		) {
 			Run(
 				bucketsPath.Replace( '\\', '/'),
-				filenamePattern: new Regex( filenamePattern ),
-				pattern: new Regex( pattern )
+				filenamePattern: new Regex( filenamePattern, RegexOptions.Compiled ),
+				pattern: new Regex( pattern, RegexOptions.Compiled )
 			);
 
 			return 0;
